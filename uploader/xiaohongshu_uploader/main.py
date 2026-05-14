@@ -158,7 +158,7 @@ async def cookie_auth(account_file):
             context = await browser.new_context(storage_state=account_file)
             context = await set_init_script(context)
             page = await context.new_page()
-            await page.goto(XHS_PUBLISH_VIDEO_URL)
+            await page.goto(XHS_PUBLISH_VIDEO_URL, wait_until="domcontentloaded", timeout=60000)
             await page.wait_for_timeout(3000)
 
             if page.url.startswith(XHS_LOGIN_URL):
@@ -228,7 +228,7 @@ async def xiaohongshu_cookie_gen(
         result = _build_login_result(False, "failed", "小红书登录失败", account_file)
         try:
             page = await context.new_page()
-            await page.goto(XHS_LOGIN_URL)
+            await page.goto(XHS_LOGIN_URL, wait_until="domcontentloaded", timeout=60000)
             qrcode_info = await _save_xhs_qrcode(page, account_file, qrcode_callback=qrcode_callback)
             qrcode_path = Path(qrcode_info["image_path"])
             xiaohongshu_logger.info(_msg("🧍", "请扫码，小人正在耐心等待登录完成"))
@@ -493,7 +493,7 @@ class XiaoHongShuVideo(XiaoHongShuBaseUploader):
     async def upload_video_content(self, page: Page) -> None:
         xiaohongshu_logger.info(_msg("🏃", f"小人开始搬运视频: {self.title}.mp4"))
         xiaohongshu_logger.info(_msg("🧭", "小人正在赶往视频发布页"))
-        await page.goto(XHS_PUBLISH_VIDEO_URL)
+        await page.goto(XHS_PUBLISH_VIDEO_URL, wait_until="domcontentloaded", timeout=60000)
         await page.wait_for_url(XHS_PUBLISH_VIDEO_URL)
         await page.locator("div[class^='upload-content'] input[class='upload-input']").set_input_files(self.file_path)
 
@@ -635,7 +635,7 @@ class XiaoHongShuNote(XiaoHongShuBaseUploader):
     async def upload_note_content(self, page: Page) -> None:
         xiaohongshu_logger.info(_msg("🏃", f"小人开始搬运图文，共 {len(self.image_paths)} 张图片"))
         xiaohongshu_logger.info(_msg("🧭", "小人正在赶往图文发布页"))
-        await page.goto(XHS_PUBLISH_NOTE_URL)
+        await page.goto(XHS_PUBLISH_NOTE_URL, wait_until="domcontentloaded", timeout=60000)
         await page.wait_for_url(XHS_PUBLISH_NOTE_URL)
 
         upload_input = page.locator('input[type="file"][accept*="image"]').first
