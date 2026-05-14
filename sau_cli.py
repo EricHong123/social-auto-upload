@@ -9,23 +9,6 @@ from pathlib import Path
 from typing import Iterable, Sequence
 
 from conf import BASE_DIR
-from content_bridge import fetch_content_from_url
-
-
-def apply_content_url(namespace: argparse.Namespace, required_field: str = "title") -> None:
-    """If --content-url is set, fetch content and fill missing fields."""
-    content_url = getattr(namespace, "content_url", None)
-    if not content_url:
-        return
-
-    data = fetch_content_from_url(content_url)
-    if not getattr(namespace, required_field, None):
-        setattr(namespace, required_field, data.get("title", "Untitled"))
-    if not getattr(namespace, "desc", None):
-        setattr(namespace, "desc", data.get("description", ""))
-    if not getattr(namespace, "tags", None):
-        tags = data.get("tags", [])
-        setattr(namespace, "tags", ",".join(tags[:10]))
 from uploader.bilibili_uploader.runtime import run_biliup_command
 from uploader.douyin_uploader.main import (
     DOUYIN_PUBLISH_STRATEGY_IMMEDIATE,
@@ -443,10 +426,6 @@ def schedule_value(value: str):
 
 def add_runtime_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")
-    parser.add_argument(
-        "--content-url", default=None,
-        help="Fetch title/description/tags from SEO AI Agent export endpoint",
-    )
     headless_group = parser.add_mutually_exclusive_group()
     headless_group.add_argument("--headed", dest="headless", action="store_false", help="Run with browser UI")
     headless_group.add_argument("--headless", dest="headless", action="store_true", help="Run in headless mode")
@@ -755,15 +734,6 @@ async def dispatch(args: argparse.Namespace) -> int:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
-
-    # If --content-url is set, fetch content from SEO AI Agent to fill title/desc/tags
-    if getattr(args, "content_url", None):
-        try:
-            apply_content_url(args)
-        except RuntimeError as exc:
-            print(str(exc), file=sys.stderr)
-            return 1
-
     try:
         return asyncio.run(dispatch(args))
     except Exception as exc:
