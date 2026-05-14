@@ -24,6 +24,44 @@ UPLOAD_DIR = SAU_DIR / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 PORT = int(os.environ.get("SAU_PORT", "8001"))
 
+# SAU uses different directory names than the CLI
+SAU_DIR_MAP = {
+    "douyin": "douyin_uploader",
+    "xiaohongshu": "xiaohongshu_uploader",
+    "kuaishou": "ks_uploader",
+    "bilibili": "bilibili_uploader",
+    "tencent": "tencent_uploader",
+    "baijiahao": "baijiahao_uploader",
+    "tiktok": "tk_uploader",
+}
+# Also map actual SAU dir names back to platform
+SAU_DIR_MAP.update({
+    "douyin_uploader": "douyin_uploader",
+    "xiaohongshu_uploader": "xiaohongshu_uploader",
+    "ks_uploader": "ks_uploader",
+    "bilibili_uploader": "bilibili_uploader",
+})
+
+def _sau_dir(platform: str) -> str:
+    """Map web UI platform name to SAU cookie directory name."""
+    return SAU_DIR_MAP.get(platform, platform)
+
+def _cookie_path(platform: str, account: str) -> Path:
+    """Get the cookie file path for a platform + account.
+    SAU saves cookies at cookies/{platform}_{account}.json (root level),
+    but also sometimes at cookies/{platform}_uploader/{account}.json.
+    Check both locations."""
+    paths = [
+        COOKIE_DIR / f"{platform}_{account}.json",
+        COOKIE_DIR / f"{_sau_dir(platform)}_{account}.json",
+        COOKIE_DIR / _sau_dir(platform) / f"{account}.json",
+    ]
+    # Return the first one that exists, or the first as default
+    for p in paths:
+        if p.exists():
+            return p
+    return paths[0]  # Default: root-level
+
 
 def _run_sau(args, timeout=120):
     env = {**os.environ, "PYTHONPATH": str(SAU_DIR)}
@@ -55,7 +93,7 @@ def _run_sau(args, timeout=120):
 _login_processes: dict[str, subprocess.Popen] = {}
 
 def handle_login(platform: str, account: str, headless: bool = True) -> dict:
-    cookie_file = COOKIE_DIR / platform / f"{account}.json"
+    cookie_file = _cookie_path(platform, account)
     if cookie_file.exists():
         return {"ok": True, "status": "logged_in"}
 
@@ -116,36 +154,31 @@ def handle_login(platform: str, account: str, headless: bool = True) -> dict:
 
 
 def _find_qr(platform: str, account: str) -> str | None:
-    """Find QR code image and copy to uploads for serving."""
-    patterns = [
-        COOKIE_DIR / f"{platform}_{account}_login_qrcode_*.png",
-        COOKIE_DIR / platform / f"{account}_qrcode.png",
-        COOKIE_DIR / platform / "qrcode.png",
-    ]
-    # Check cookies/{platform}/
-    pdir = COOKIE_DIR / platform
-    if pdir.exists():
-        for f in sorted(pdir.glob("*.png"), key=lambda x: x.stat().st_mtime, reverse=True):
-            dest = UPLOAD_DIR / f"qr_{platform}_{account}.png"
-            shutil.copy(f, dest)
-            return f"/uploads/qr_{platform}_{account}.png"
-    # Check cookies/ root (SAU generates here: {platform}_{account}_login_qrcode_*.png)
-    for f in sorted(COOKIE_DIR.glob(f"{platform}_*_qrcode*.png"), key=lambda x: x.stat().st_mtime, reverse=True):
-        dest = UPLOAD_DIR / f"qr_{platform}_{account}.png"
-        shutil.copy(f, dest)
-        return f"/uploads/qr_{platform}_{account}.png"
-    # Also check for any qrcode PNG in cookies root
-    for f in sorted(COOKIE_DIR.glob("*qrcode*.png"), key=lambda x: x.stat().st_mtime, reverse=True):
-        if platform in f.name:
-            dest = UPLOAD_DIR / f"qr_{platform}_{account}.png"
-            shutil.copy(f, dest)
-            return f"/uploads/qr_{platform}_{account}.png"
+    """Find QR code image and copy to uploads for serving.
+    Returns None if no QR found or if QR is older than 3 minutes (expired)."""
+    now = time.time()
+    qr_max_age = 180  # 3 minutes
+
+    # Search in both cookies/ root and cookies/{platform}/
+    search_dirs = [COOKIE_DIR, COOKIE_DIR / _sau_dir(platform)]
+    for sdir in search_dirs:
+        if not sdir.exists():
+            continue
+        for f in sorted(sdir.glob("*.png"), key=lambda x: x.stat().st_mtime, reverse=True):
+            mtime = f.stat().st_mtime
+            if now - mtime > qr_max_age:
+                continue  # Skip expired QRs
+            if "qrcode" in f.name.lower() or "qr" in f.name.lower():
+                if platform in f.name or "qrcode" in f.name.lower():
+                    dest = UPLOAD_DIR / f"qr_{platform}_{account}.png"
+                    shutil.copy(f, dest)
+                    return f"/uploads/qr_{platform}_{account}.png"
     return None
 
 
 def handle_publish(platform: str, account: str, video_file: str,
                    title: str, desc: str, tags: str, schedule: str = "") -> dict:
-    cookie_file = COOKIE_DIR / platform / f"{account}.json"
+    cookie_file = _cookie_path(platform, account)
     if not cookie_file.exists():
         return {"ok": False, "error": f"请先在 {platform} 平台扫码登录"}
 
@@ -174,10 +207,28 @@ def handle_publish(platform: str, account: str, video_file: str,
 def handle_status() -> dict:
     platforms = {}
     if COOKIE_DIR.exists():
+        # Check root-level cookies: {platform}_{account}.json
+        for f in COOKIE_DIR.glob("*.json"):
+            name = f.stem  # e.g. "douyin_default" or "xiaohongshu_default"
+            parts = name.split("_", 1)
+            if len(parts) == 2:
+                platform, account = parts
+                if platform not in platforms:
+                    platforms[platform] = []
+                platforms[platform].append(account)
+        # Check subdirectory cookies
         for d in COOKIE_DIR.iterdir():
             if d.is_dir():
                 accounts = [f.stem for f in d.glob("*.json")]
-                platforms[d.name] = accounts
+                if accounts:
+                    for web_name, sau_name in SAU_DIR_MAP.items():
+                        if sau_name == d.name:
+                            if web_name not in platforms:
+                                platforms[web_name] = []
+                            platforms[web_name].extend(accounts)
+                            break
+                    else:
+                        platforms[d.name] = accounts
     return {"platforms": platforms}
 
 
@@ -199,7 +250,7 @@ class SAUHandler(SimpleHTTPRequestHandler):
                 params = {k: v[0] for k, v in parse_qs(urlparse(self.path).query).items()}
             platform = params.get("platform", "douyin")
             account = params.get("account", "default")
-            cookie_file = COOKIE_DIR / platform / f"{account}.json"
+            cookie_file = _cookie_path(platform, account)
             qr = _find_qr(platform, account)
             self._json({"logged_in": cookie_file.exists(), "qr_url": qr})
             return
