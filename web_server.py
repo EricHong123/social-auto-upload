@@ -26,6 +26,7 @@ PORT = int(os.environ.get("SAU_PORT", "8001"))
 
 def _run_sau(args, timeout=120):
     env = {**os.environ, "PYTHONPATH": str(SAU_DIR)}
+    # Try `sau` command first, fallback to python3 sau_cli.py
     try:
         result = subprocess.run(
             args, cwd=str(SAU_DIR), capture_output=True, text=True,
@@ -33,7 +34,16 @@ def _run_sau(args, timeout=120):
         )
         return result
     except FileNotFoundError:
-        return None
+        # Fallback: run via python3 directly
+        try:
+            fallback = ["python3", str(SAU_DIR / "sau_cli.py")] + args[1:]
+            result = subprocess.run(
+                fallback, cwd=str(SAU_DIR), capture_output=True, text=True,
+                timeout=timeout, env=env,
+            )
+            return result
+        except Exception:
+            return None
     except subprocess.TimeoutExpired:
         return None
 
