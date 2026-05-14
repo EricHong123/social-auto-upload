@@ -98,6 +98,7 @@ AI的发展毋庸置疑，希望你遇到这种安装和使用，不要再怯场
 ### 补充说明：
 
 - CLI 使用请看：[CLI 使用说明](./docs/CLI.md)
+- **★ SEO AI Agent 集成**：[SEO AI Agent](https://github.com/EricHong123/seo-ai-agent) 写文章 → `--content-url` 一键分发到抖音/B站/小红书/快手
 - 如果你准备在 `OpenClaw`、`Codex`、`Claude Code / cc` 里使用本项目，先看：[Agent Bootstrap Prompt](./docs/agent-bootstrap.md)
 - agent / skill 请看：[Douyin Upload Skill](./skills/douyin-upload/SKILL.md)
 - agent / skill 请看：[Kuaishou Upload Skill](./skills/kuaishou-upload/SKILL.md)
@@ -151,6 +152,11 @@ Web 端相关代码仍然保留，但已经不是当前主线，不保证可直�
 sau douyin login --account <account_name>
 sau douyin check --account <account_name>
 sau douyin upload-video --account <account_name> --file videos/demo.mp4 --title "示例标题" --desc "示例简介"
+
+# ★ 配合 SEO AI Agent 自动填充标题/描述/标签
+sau douyin upload-video --account <account_name> --file videos/demo.mp4 \
+  --content-url http://localhost:8000/api/content/export/latest?format=sau
+
 sau douyin upload-note --account <account_name> --images videos/1.png videos/2.png --title "图文标题" --note "图文正文"
 
 sau kuaishou login --account <account_name>
