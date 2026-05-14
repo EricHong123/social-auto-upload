@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Social Auto Upload</title>
+<style>
+:root {
+  --bg: #fff; --surface: #fafafa; --border: #ebebeb;
+  --text: #1a1a1a; --dim: #858585; --accent: #1a1a1a;
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:var(--font); background:var(--bg); color:var(--text); min-height:100vh; display:flex; justify-content:center; padding:40px 20px; }
+.container { max-width:600px; width:100%; }
+h1 { font-size:20px; font-weight:600; margin-bottom:8px; }
+.subtitle { color:var(--dim); font-size:13px; margin-bottom:32px; }
+
+/* Platform selector */
+.platforms { display:flex; gap:8px; margin-bottom:24px; flex-wrap:wrap; }
+.pf-card {
+  padding:12px 16px; border:1px solid var(--border); cursor:pointer;
+  text-align:center; font-size:13px; transition:border-color .15s; flex:1; min-width:100px;
+}
+.pf-card:hover { border-color:var(--text); }
+.pf-card.active { border-color:var(--text); background:var(--surface); }
+.pf-card .icon { font-size:24px; display:block; margin-bottom:4px; }
+
+/* Login */
+.login-row { display:flex; align-items:center; gap:12px; margin-bottom:24px; }
+.login-row .status { font-size:12px; color:var(--dim); }
+.login-row .status.ok { color:#4d9375; }
+
+/* Video drop zone */
+.drop-zone {
+  border:2px dashed var(--border); padding:40px 20px; text-align:center;
+  margin-bottom:24px; cursor:pointer; transition:border-color .15s;
+}
+.drop-zone:hover, .drop-zone.drag { border-color:var(--text); }
+.drop-zone.has-file { border-style:solid; border-color:var(--text); background:var(--surface); padding:16px; }
+.drop-zone .dz-text { color:var(--dim); font-size:14px; }
+.drop-zone .dz-file { font-size:13px; font-weight:500; }
+.drop-zone .dz-size { color:var(--dim); font-size:12px; }
+
+/* Inputs */
+.field { margin-bottom:16px; }
+.field label { display:block; font-size:11px; color:var(--dim); text-transform:uppercase; margin-bottom:6px; letter-spacing:.5px; }
+.field input, .field textarea {
+  width:100%; padding:10px 0; border:none; border-bottom:1px solid var(--border);
+  font-size:14px; font-family:var(--font); outline:none; background:transparent;
+}
+.field input:focus, .field textarea:focus { border-bottom-color:var(--text); }
+.field textarea { resize:none; min-height:60px; }
+
+/* Button */
+.btn {
+  width:100%; padding:14px; background:var(--accent); color:#fff;
+  border:none; font-size:14px; font-family:var(--font); cursor:pointer;
+  transition:opacity .15s;
+}
+.btn:hover { opacity:.85; }
+.btn:disabled { opacity:.5; cursor:not-allowed; }
+.result { text-align:center; font-size:13px; margin-top:12px; }
+.result.ok { color:#4d9375; }
+.result.err { color:#cc3333; }
+
+/* QR Modal */
+.qr-overlay { display:none; position:fixed; inset:0; background:rgba(255,255,255,.92); z-index:100; align-items:center; justify-content:center; }
+.qr-overlay.show { display:flex; }
+.qr-box { text-align:center; background:var(--bg); padding:40px; border:1px solid var(--border); }
+.qr-box img { max-width:200px; max-height:200px; display:block; margin:0 auto 16px; }
+.qr-box p { font-size:13px; color:var(--dim); }
+.qr-box .close-btn { font-size:12px; color:var(--dim); background:none; border:none; cursor:pointer; margin-top:12px; font-family:var(--font); }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Social Auto Upload</h1>
+  <p class="subtitle">多平台视频一键发布 · 抖音 / 小红书 / 快手 / B站</p>
+
+  <!-- Step 0: Platform -->
+  <div class="platforms" id="platforms">
+    <div class="pf-card active" onclick="selectPf('douyin')"><span class="icon">🎵</span>抖音</div>
+    <div class="pf-card" onclick="selectPf('xiaohongshu')"><span class="icon">📕</span>小红书</div>
+    <div class="pf-card" onclick="selectPf('kuaishou')"><span class="icon">⚡</span>快手</div>
+    <div class="pf-card" onclick="selectPf('bilibili')"><span class="icon">📺</span>B站</div>
+  </div>
+
+  <!-- Step 1: Login -->
+  <div class="login-row">
+    <button class="btn" style="width:auto;padding:8px 16px;font-size:12px" onclick="doLogin()">扫码登录</button>
+    <span class="status" id="loginStatus"></span>
+    <input type="text" id="accountName" value="default" style="display:none">
+  </div>
+
+  <!-- Step 2: Video -->
+  <div class="drop-zone" id="dropZone" onclick="document.getElementById('videoInput').click()">
+    <div class="dz-text">点击或拖拽视频文件到此处</div>
+    <input type="file" id="videoInput" accept="video/*" style="display:none" onchange="handleVideo(event)">
+  </div>
+
+  <!-- Step 3: Metadata -->
+  <div class="field">
+    <label>标题 *</label>
+    <input type="text" id="titleInput" placeholder="视频标题">
+  </div>
+  <div class="field">
+    <label>描述</label>
+    <textarea id="descInput" placeholder="视频描述（选填）"></textarea>
+  </div>
+  <div class="field">
+    <label>标签（逗号分隔）</label>
+    <input type="text" id="tagsInput" placeholder="标签1,标签2,标签3">
+  </div>
+
+  <!-- Step 4: Publish -->
+  <button class="btn" id="publishBtn" onclick="doPublish()">发布</button>
+  <div class="result" id="publishResult"></div>
+</div>
+
+<!-- QR Modal -->
+<div class="qr-overlay" id="qrOverlay">
+  <div class="qr-box">
+    <img id="qrImage" src="" alt="QR Code">
+    <p>用对应平台的 App 扫描二维码登录</p>
+    <p style="font-size:11px;margin-top:4px">扫码后自动检测登录状态...</p>
+    <button class="close-btn" onclick="closeQr()">关闭</button>
+  </div>
+</div>
+
+<script>
+let platform = 'douyin';
+let videoFile = null;
+let qrPoll = null;
+
+function selectPf(id) {
+  platform = id;
+  document.querySelectorAll('.pf-card').forEach(c => c.classList.remove('active'));
+  document.querySelector(`[onclick="selectPf('${id}')"]`).classList.add('active');
+  checkStatus();
+}
+
+async function checkStatus() {
+  try {
+    const r = await fetch('/api/status');
+    const d = await r.json();
+    const accounts = d.platforms[platform] || [];
+    const el = document.getElementById('loginStatus');
+    if (accounts.length > 0) {
+      el.className = 'status ok';
+      el.textContent = `已登录 (${accounts.join(', ')})`;
+    } else {
+      el.className = 'status';
+      el.textContent = '未登录';
+    }
+  } catch(e) {}
+}
+
+async function doLogin() {
+  const status = document.getElementById('loginStatus');
+  status.textContent = '获取二维码...';
+  try {
+    const r = await fetch('/api/login', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({platform, account: 'default'}),
+    });
+    const d = await r.json();
+    if (d.status === 'logged_in') {
+      status.className = 'status ok';
+      status.textContent = '已登录 ✓';
+    } else if (d.status === 'qr_ready') {
+      status.textContent = '请扫码';
+      document.getElementById('qrImage').src = d.qr_url;
+      document.getElementById('qrOverlay').classList.add('show');
+      startQrPoll();
+    } else {
+      status.textContent = '失败: ' + (d.error || 'SAU 未安装');
+    }
+  } catch(e) { status.textContent = '连接失败'; }
+}
+
+function startQrPoll() {
+  if (qrPoll) clearInterval(qrPoll);
+  let n = 0;
+  qrPoll = setInterval(async () => {
+    n++;
+    try {
+      const r = await fetch('/api/login', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({platform, account: 'default'}),
+      });
+      const d = await r.json();
+      if (d.status === 'logged_in') {
+        clearInterval(qrPoll); qrPoll = null;
+        closeQr();
+        const el = document.getElementById('loginStatus');
+        el.className = 'status ok';
+        el.textContent = '已登录 ✓';
+      }
+    } catch(e) {}
+    if (n > 30) { clearInterval(qrPoll); qrPoll = null; closeQr(); }
+  }, 3000);
+}
+
+function closeQr() {
+  document.getElementById('qrOverlay').classList.remove('show');
+  if (qrPoll) { clearInterval(qrPoll); qrPoll = null; }
+}
+
+function handleVideo(e) {
+  const f = e.target.files[0];
+  if (!f) return;
+  videoFile = f;
+  const dz = document.getElementById('dropZone');
+  dz.classList.add('has-file');
+  dz.innerHTML = `<div class="dz-file">${f.name}</div><div class="dz-size">${(f.size/1024/1024).toFixed(1)} MB</div>`;
+}
+
+// Drag & drop
+const dz = document.getElementById('dropZone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('drag');
+  const f = e.dataTransfer.files[0];
+  if (f && f.type.startsWith('video/')) {
+    videoFile = f;
+    dz.classList.add('has-file');
+    dz.innerHTML = `<div class="dz-file">${f.name}</div><div class="dz-size">${(f.size/1024/1024).toFixed(1)} MB</div>`;
+  }
+});
+
+async function doPublish() {
+  const title = document.getElementById('titleInput').value.trim();
+  if (!title) return alert('请输入标题');
+  if (!videoFile) return alert('请上传视频文件');
+
+  const btn = document.getElementById('publishBtn');
+  const result = document.getElementById('publishResult');
+  btn.disabled = true; result.textContent = ''; result.className = 'result';
+
+  const form = new FormData();
+  form.append('video', videoFile);
+  form.append('platform', platform);
+  form.append('account', 'default');
+  form.append('title', title);
+  form.append('desc', document.getElementById('descInput').value.trim());
+  form.append('tags', document.getElementById('tagsInput').value.trim());
+
+  try {
+    const r = await fetch('/api/publish', { method:'POST', body:form });
+    const d = await r.json();
+    result.className = d.ok ? 'result ok' : 'result err';
+    result.textContent = d.ok ? '发布成功 ✓' : (d.error || '发布失败');
+  } catch(e) {
+    result.className = 'result err';
+    result.textContent = '错误: ' + e.message;
+  }
+  btn.disabled = false;
+}
+
+checkStatus();
+</script>
+</body>
+</html>
