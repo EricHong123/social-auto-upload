@@ -118,18 +118,25 @@ def handle_login(platform: str, account: str, headless: bool = True) -> dict:
 def _find_qr(platform: str, account: str) -> str | None:
     """Find QR code image and copy to uploads for serving."""
     patterns = [
+        COOKIE_DIR / f"{platform}_{account}_login_qrcode_*.png",
         COOKIE_DIR / platform / f"{account}_qrcode.png",
         COOKIE_DIR / platform / "qrcode.png",
     ]
-    for p in patterns:
-        if p.exists():
+    # Check cookies/{platform}/
+    pdir = COOKIE_DIR / platform
+    if pdir.exists():
+        for f in sorted(pdir.glob("*.png"), key=lambda x: x.stat().st_mtime, reverse=True):
             dest = UPLOAD_DIR / f"qr_{platform}_{account}.png"
-            shutil.copy(p, dest)
+            shutil.copy(f, dest)
             return f"/uploads/qr_{platform}_{account}.png"
-    # Also check for any PNG in cookies/{platform}/
-    cookie_platform_dir = COOKIE_DIR / platform
-    if cookie_platform_dir.exists():
-        for f in sorted(cookie_platform_dir.glob("*.png"), key=lambda x: x.stat().st_mtime, reverse=True):
+    # Check cookies/ root (SAU generates here: {platform}_{account}_login_qrcode_*.png)
+    for f in sorted(COOKIE_DIR.glob(f"{platform}_*_qrcode*.png"), key=lambda x: x.stat().st_mtime, reverse=True):
+        dest = UPLOAD_DIR / f"qr_{platform}_{account}.png"
+        shutil.copy(f, dest)
+        return f"/uploads/qr_{platform}_{account}.png"
+    # Also check for any qrcode PNG in cookies root
+    for f in sorted(COOKIE_DIR.glob("*qrcode*.png"), key=lambda x: x.stat().st_mtime, reverse=True):
+        if platform in f.name:
             dest = UPLOAD_DIR / f"qr_{platform}_{account}.png"
             shutil.copy(f, dest)
             return f"/uploads/qr_{platform}_{account}.png"
@@ -249,14 +256,10 @@ class SAUHandler(SimpleHTTPRequestHandler):
 
     def _handle_multipart_publish(self) -> dict:
         """Parse multipart form data and publish."""
-        import cgi
-        from io import BytesIO
-
         content_type = self.headers.get("Content-Type", "")
         content_length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(content_length)
 
-        # Parse multipart manually
         boundary = content_type.split("boundary=")[1].encode()
         parts = body.split(b"--" + boundary)
 
@@ -268,17 +271,22 @@ class SAUHandler(SimpleHTTPRequestHandler):
             if b"\r\n\r\n" not in part:
                 continue
             headers_raw, data = part.split(b"\r\n\r\n", 1)
-            data = data.rstrip(b"\r\n--")
+            data = data.rstrip(b"\r\n").rstrip(b"--").rstrip(b"\r\n")
 
             headers_text = headers_raw.decode(errors="ignore")
             if "name=" not in headers_text:
                 continue
 
-            name = headers_text.split('name="')[1].split('"')[0]
+            # Extract field name
+            name_start = headers_text.index('name="') + 6
+            name_end = headers_text.index('"', name_start)
+            name = headers_text[name_start:name_end]
 
             if "filename=" in headers_text:
                 video_data = data
-                video_filename = headers_text.split('filename="')[1].split('"')[0]
+                fn_start = headers_text.index('filename="') + 10
+                fn_end = headers_text.index('"', fn_start)
+                video_filename = headers_text[fn_start:fn_end]
             else:
                 fields[name] = data.decode(errors="ignore")
 
