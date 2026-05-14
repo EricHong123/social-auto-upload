@@ -59,7 +59,23 @@ h1 { font-size:20px; font-weight:600; margin-bottom:8px; }
   transition:opacity .15s;
 }
 .btn:hover { opacity:.85; }
-.btn:disabled { opacity:.5; cursor:not-allowed; }
+.btn:disabled { opacity:.7; cursor:not-allowed; }
+
+/* Publish waiting animation */
+.publish-overlay {
+  display:none; position:fixed; inset:0; background:rgba(255,255,255,.85);
+  z-index:100; align-items:center; justify-content:center; flex-direction:column;
+}
+.publish-overlay.show { display:flex; }
+.spinner {
+  width:32px; height:32px; border:2px solid var(--border);
+  border-top-color:var(--accent); border-radius:50%;
+  animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform:rotate(360deg); } }
+.publish-overlay p { margin-top:16px; font-size:13px; color:var(--dim); animation: pulse 1.5s ease-in-out infinite; }
+@keyframes pulse { 0%,100% { opacity:.5; } 50% { opacity:1; } }
+
 .result { text-align:center; font-size:13px; margin-top:12px; }
 .result.ok { color:#4d9375; }
 .result.err { color:#cc3333; }
@@ -116,6 +132,12 @@ h1 { font-size:20px; font-weight:600; margin-bottom:8px; }
   <!-- Step 4: Publish -->
   <button class="btn" id="publishBtn" onclick="doPublish()">发布</button>
   <div class="result" id="publishResult"></div>
+</div>
+
+<!-- Publish waiting overlay -->
+<div class="publish-overlay" id="publishOverlay">
+  <div class="spinner"></div>
+  <p id="publishOverlayText">正在发布...</p>
 </div>
 
 <!-- QR Modal -->
@@ -235,7 +257,11 @@ async function doPublish() {
 
   const btn = document.getElementById('publishBtn');
   const result = document.getElementById('publishResult');
+  const overlay = document.getElementById('publishOverlay');
+  const overlayText = document.getElementById('publishOverlayText');
   btn.disabled = true; result.textContent = ''; result.className = 'result';
+  overlay.classList.add('show');
+  overlayText.textContent = '正在上传视频并发布...';
 
   const form = new FormData();
   form.append('video', videoFile);
@@ -248,9 +274,11 @@ async function doPublish() {
   try {
     const r = await fetch('/api/publish', { method:'POST', body:form });
     const d = await r.json();
+    overlay.classList.remove('show');
     result.className = d.ok ? 'result ok' : 'result err';
     result.textContent = d.ok ? '发布成功 ✓' : (d.error || '发布失败');
   } catch(e) {
+    overlay.classList.remove('show');
     result.className = 'result err';
     result.textContent = '错误: ' + e.message;
   }
