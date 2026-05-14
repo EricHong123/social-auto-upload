@@ -50,7 +50,7 @@ def _run_sau(args, timeout=120):
 
 # ── Handlers ────────────────────────────────────────────
 
-def handle_login(platform: str, account: str, headless: bool = False) -> dict:
+def handle_login(platform: str, account: str, headless: bool = True) -> dict:
     cookie_file = COOKIE_DIR / platform / f"{account}.json"
     if cookie_file.exists():
         return {"ok": True, "status": "logged_in"}
