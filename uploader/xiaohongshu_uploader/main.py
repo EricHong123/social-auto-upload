@@ -401,13 +401,19 @@ class XiaoHongShuBaseUploader(BaseVideoUploader):
 
         for tag in self.tags:  # 循环处理所有 tags
             await page.keyboard.type("#" + tag, delay=30)
-            await page.locator('#creator-editor-topic-container').wait_for(
-                state="visible",
-                timeout=3000
-            )
-            first_item = page.locator('#creator-editor-topic-container .item').first
-            await first_item.wait_for(state="visible", timeout=2000)
-            await first_item.click()
+            try:
+                # Wait for topic suggestion dropdown
+                await page.locator('#creator-editor-topic-container').wait_for(
+                    state="visible",
+                    timeout=5000
+                )
+                first_item = page.locator('#creator-editor-topic-container .item').first
+                await first_item.wait_for(state="visible", timeout=3000)
+                await first_item.click()
+            except Exception:
+                # Topic dropdown didn't appear — press Enter to confirm typed text, then continue
+                await page.keyboard.press("Enter")
+                await page.wait_for_timeout(500)
 
     async def fill_meta(self, page: Page) -> None:
         await self.fill_title(page)
