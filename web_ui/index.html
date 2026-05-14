@@ -186,13 +186,9 @@ function startQrPoll() {
   qrPoll = setInterval(async () => {
     n++;
     try {
-      const r = await fetch('/api/login', {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({platform, account: 'default'}),
-      });
+      const r = await fetch(`/api/check-login?platform=${platform}&account=default`);
       const d = await r.json();
-      if (d.status === 'logged_in') {
+      if (d.logged_in) {
         clearInterval(qrPoll); qrPoll = null;
         closeQr();
         const el = document.getElementById('loginStatus');

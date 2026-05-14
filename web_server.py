@@ -10,6 +10,7 @@ import subprocess
 import shutil
 import os
 import sys
+import time
 import uuid
 import tempfile
 import mimetypes
@@ -50,40 +51,89 @@ def _run_sau(args, timeout=120):
 
 # ── Handlers ────────────────────────────────────────────
 
+# Track background login processes
+_login_processes: dict[str, subprocess.Popen] = {}
+
 def handle_login(platform: str, account: str, headless: bool = True) -> dict:
     cookie_file = COOKIE_DIR / platform / f"{account}.json"
     if cookie_file.exists():
         return {"ok": True, "status": "logged_in"}
 
+    # Check if already running
+    key = f"{platform}_{account}"
+    if key in _login_processes:
+        proc = _login_processes[key]
+        if proc.poll() is None:
+            # Still running — check for QR code
+            qr = _find_qr(platform, account)
+            if qr:
+                return {"ok": True, "status": "qr_ready", "qr_url": qr}
+            if cookie_file.exists():
+                return {"ok": True, "status": "logged_in"}
+            return {"ok": True, "status": "waiting", "message": "登录进行中，请等待二维码..."}
+        else:
+            del _login_processes[key]
+
+    # Start login in background
     args = ["sau", platform, "login", "--account", account]
     if headless:
         args.append("--headless")
 
-    result = _run_sau(args)
-    if result is None:
+    env = {**os.environ, "PYTHONPATH": str(SAU_DIR)}
+    saucmd = "sau"
+    if not shutil.which("sau"):
+        # Fallback to python3
+        args = ["python3", str(SAU_DIR / "sau_cli.py")] + args[1:]
+        saucmd = "python3"
+
+    try:
+        # Start the process without waiting
+        proc = subprocess.Popen(
+            args, cwd=str(SAU_DIR), stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, text=True, env=env,
+        )
+        _login_processes[key] = proc
+    except FileNotFoundError:
         return {"ok": False, "error": "SAU CLI 未安装。pip install -r requirements.txt"}
 
-    # SAU login generates QR code at cookies/{platform}/{account}_qrcode.png
-    qr_patterns = [
+    # Wait briefly for QR code to appear
+    import time
+    for _ in range(30):  # wait up to 15 seconds
+        time.sleep(0.5)
+        if proc.poll() is not None:
+            # Process exited
+            del _login_processes[key]
+            if cookie_file.exists():
+                return {"ok": True, "status": "logged_in"}
+            stdout = proc.stdout.read() if proc.stdout else ""
+            stderr = proc.stderr.read() if proc.stderr else ""
+            return {"ok": False, "error": stderr[:300] or stdout[:300] or "登录失败"}
+        qr = _find_qr(platform, account)
+        if qr:
+            return {"ok": True, "status": "qr_ready", "qr_url": qr}
+
+    return {"ok": True, "status": "waiting", "message": "正在启动浏览器..."}
+
+
+def _find_qr(platform: str, account: str) -> str | None:
+    """Find QR code image and copy to uploads for serving."""
+    patterns = [
         COOKIE_DIR / platform / f"{account}_qrcode.png",
         COOKIE_DIR / platform / "qrcode.png",
     ]
-    qr_path = None
-    for p in qr_patterns:
+    for p in patterns:
         if p.exists():
-            qr_path = p
-            break
-
-    if qr_path:
-        # Copy QR to uploads for serving
-        dest = UPLOAD_DIR / f"qr_{platform}_{account}.png"
-        shutil.copy(qr_path, dest)
-        return {"ok": True, "status": "qr_ready", "qr_url": f"/uploads/qr_{platform}_{account}.png"}
-
-    if cookie_file.exists():
-        return {"ok": True, "status": "logged_in"}
-
-    return {"ok": False, "error": result.stderr[:300] or result.stdout[:300] or "登录超时"}
+            dest = UPLOAD_DIR / f"qr_{platform}_{account}.png"
+            shutil.copy(p, dest)
+            return f"/uploads/qr_{platform}_{account}.png"
+    # Also check for any PNG in cookies/{platform}/
+    cookie_platform_dir = COOKIE_DIR / platform
+    if cookie_platform_dir.exists():
+        for f in sorted(cookie_platform_dir.glob("*.png"), key=lambda x: x.stat().st_mtime, reverse=True):
+            dest = UPLOAD_DIR / f"qr_{platform}_{account}.png"
+            shutil.copy(f, dest)
+            return f"/uploads/qr_{platform}_{account}.png"
+    return None
 
 
 def handle_publish(platform: str, account: str, video_file: str,
@@ -135,6 +185,16 @@ class SAUHandler(SimpleHTTPRequestHandler):
 
         if path == "/api/status":
             self._json(handle_status())
+            return
+        if path == "/api/check-login":
+            params = {}
+            if "?" in self.path:
+                params = {k: v[0] for k, v in parse_qs(urlparse(self.path).query).items()}
+            platform = params.get("platform", "douyin")
+            account = params.get("account", "default")
+            cookie_file = COOKIE_DIR / platform / f"{account}.json"
+            qr = _find_qr(platform, account)
+            self._json({"logged_in": cookie_file.exists(), "qr_url": qr})
             return
         if path.startswith("/uploads/"):
             filepath = UPLOAD_DIR / Path(path).name
