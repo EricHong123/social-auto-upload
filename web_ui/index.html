@@ -196,10 +196,39 @@ async function doLogin() {
       document.getElementById('qrImage').src = d.qr_url;
       document.getElementById('qrOverlay').classList.add('show');
       startQrPoll();
+    } else if (d.status === 'waiting') {
+      status.textContent = '启动浏览器中...';
+      startQrWait();  // Poll until QR appears
     } else {
       status.textContent = '失败: ' + (d.error || 'SAU 未安装');
     }
   } catch(e) { status.textContent = '连接失败'; }
+}
+
+let qrWaitPoll = null;
+function startQrWait() {
+  if (qrWaitPoll) clearInterval(qrWaitPoll);
+  const status = document.getElementById('loginStatus');
+  let dots = 0;
+  qrWaitPoll = setInterval(async () => {
+    dots = (dots + 1) % 4;
+    status.textContent = '启动浏览器中' + '.'.repeat(dots);
+    try {
+      const r = await fetch(`/api/check-login?platform=${platform}&account=default`);
+      const d = await r.json();
+      if (d.logged_in) {
+        clearInterval(qrWaitPoll); qrWaitPoll = null;
+        status.className = 'status ok';
+        status.textContent = '已登录 ✓';
+      } else if (d.qr_url) {
+        clearInterval(qrWaitPoll); qrWaitPoll = null;
+        status.textContent = '请扫码';
+        document.getElementById('qrImage').src = d.qr_url;
+        document.getElementById('qrOverlay').classList.add('show');
+        startQrPoll();
+      }
+    } catch(e) {}
+  }, 2000);
 }
 
 function startQrPoll() {
@@ -225,6 +254,7 @@ function startQrPoll() {
 function closeQr() {
   document.getElementById('qrOverlay').classList.remove('show');
   if (qrPoll) { clearInterval(qrPoll); qrPoll = null; }
+  if (qrWaitPoll) { clearInterval(qrWaitPoll); qrWaitPoll = null; }
 }
 
 function handleVideo(e) {
