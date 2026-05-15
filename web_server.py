@@ -92,7 +92,7 @@ def _run_sau(args, timeout=120):
 # Track background login processes
 _login_processes: dict[str, subprocess.Popen] = {}
 
-def handle_login(platform: str, account: str, headless: bool = True) -> dict:
+def handle_login(platform: str, account: str, headless: bool = False) -> dict:
     cookie_file = _cookie_path(platform, account)
     if cookie_file.exists():
         return {"ok": True, "status": "logged_in"}
@@ -118,6 +118,8 @@ def handle_login(platform: str, account: str, headless: bool = True) -> dict:
     args = ["sau", platform, "login", "--account", account]
     if headless:
         args.append("--headless")
+    else:
+        args.append("--headed")
 
     env = {**os.environ, "PYTHONPATH": str(SAU_DIR)}
     saucmd = "sau"
