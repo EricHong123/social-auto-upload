@@ -83,7 +83,7 @@ async def _is_ks_cookie_invalid(page: Page, timeout: int = 5000) -> bool:
 
 async def _extract_ks_qrcode_src(page: Page) -> str:
     login_form = page.locator("main#login-form").first
-    await login_form.wait_for(state="visible", timeout=30000)
+    await login_form.wait_for(state="visible", timeout=60000)
 
     qrcode_img = login_form.locator('div.qr-login img[alt="qrcode"]').first
     try:
@@ -160,7 +160,7 @@ async def cookie_auth(account_file):
             context = await browser.new_context(storage_state=account_file)
             context = await set_init_script(context)
             page = await context.new_page()
-            await page.goto(KUAISHOU_UPLOAD_URL)
+            await page.goto(KUAISHOU_UPLOAD_URL, wait_until="domcontentloaded", timeout=60000)
             if await _is_ks_cookie_invalid(page):
                 kuaishou_logger.info(_msg("🥹", "cookie 已失效，得重新登录一下"))
                 return False
@@ -210,7 +210,7 @@ async def get_ks_cookie(
         result = _build_login_result(False, "failed", "快手登录失败", account_file)
         try:
             page = await context.new_page()
-            await page.goto(KUAISHOU_LOGIN_URL)
+            await page.goto(KUAISHOU_LOGIN_URL, wait_until="domcontentloaded", timeout=60000)
             kuaishou_logger.info(_msg("🧍", "请在浏览器里扫码登录快手，小人正在耐心等待"))
 
             qrcode_info = await _save_ks_qrcode(page, account_file, qrcode_callback=qrcode_callback)
@@ -339,7 +339,7 @@ class KSBaseUploader(BaseVideoUploader):
             await close_button.click(force=True)
 
             # 等待遮罩消失
-            await joyride_tooltip.wait_for(state="hidden", timeout=5000)
+            await joyride_tooltip.wait_for(state="hidden", timeout=10000)
 
             print("✅ 已关闭 Joyride 遮罩")
         else:
@@ -392,18 +392,18 @@ class KSVideo(KSBaseUploader):
         kuaishou_logger.info(_msg("🖼️", "小人准备设置封面"))
 
         cover_label = page.locator("span").filter(has_text="封面设置")
-        await cover_label.wait_for(state="visible", timeout=30000)
+        await cover_label.wait_for(state="visible", timeout=60000)
         await cover_label.locator("xpath=../following-sibling::div[1]").locator('div').nth(0).click()
 
         modal = page.locator('div[role="document"].ant-modal')
-        await modal.wait_for(state="visible", timeout=30000)
+        await modal.wait_for(state="visible", timeout=60000)
 
         upload_cover_tab = modal.get_by_text("上传封面", exact=True)
         await upload_cover_tab.wait_for(state="visible", timeout=10000)
         await upload_cover_tab.click()
 
         file_input = modal.locator('input[type="file"]')
-        await file_input.wait_for(state="attached", timeout=30000)
+        await file_input.wait_for(state="attached", timeout=60000)
         await file_input.set_input_files(self.thumbnail_path)
         await asyncio.sleep(1)
 
@@ -411,7 +411,7 @@ class KSVideo(KSBaseUploader):
         await confirm_button.wait_for(state="visible", timeout=10000)
         await confirm_button.click()
 
-        await modal.wait_for(state="hidden", timeout=30000)
+        await modal.wait_for(state="hidden", timeout=60000)
         kuaishou_logger.success(_msg("🥳", "封面已经设置完成"))
 
     async def upload(self, playwright: Playwright) -> None:
@@ -435,7 +435,7 @@ class KSVideo(KSBaseUploader):
         upload_success = False
         try:
             page = await context.new_page()
-            await page.goto(KUAISHOU_UPLOAD_URL)
+            await page.goto(KUAISHOU_UPLOAD_URL, wait_until="domcontentloaded", timeout=60000)
             kuaishou_logger.info(_msg("🏃", f"小人开始搬运视频: {self.title}.mp4"))
             kuaishou_logger.info(_msg("🧭", "小人正在赶往快手上传主页"))
             await page.wait_for_url(KUAISHOU_UPLOAD_URL_PATTERN)
@@ -512,7 +512,7 @@ class KSVideo(KSBaseUploader):
                     if await confirm_button.count() > 0:
                         await confirm_button.click()
 
-                    await page.wait_for_url(KUAISHOU_MANAGE_URL_PATTERN, timeout=5000)
+                    await page.wait_for_url(KUAISHOU_MANAGE_URL_PATTERN, timeout=10000)
                     kuaishou_logger.success(_msg("🥳", "视频发布成功，小人开心收工"))
                     break
                 except Exception as exc:
@@ -651,7 +651,7 @@ class KSNote(KSBaseUploader):
                 if await confirm_button.count() > 0:
                     await confirm_button.click()
 
-                await page.wait_for_url(KUAISHOU_MANAGE_URL_PATTERN, timeout=5000)
+                await page.wait_for_url(KUAISHOU_MANAGE_URL_PATTERN, timeout=10000)
                 kuaishou_logger.success(_msg("🥳", "图文发布成功，小人开心收工"))
                 break
             except Exception as exc:
@@ -681,7 +681,7 @@ class KSNote(KSBaseUploader):
         upload_success = False
         try:
             page = await context.new_page()
-            await page.goto(KUAISHOU_UPLOAD_URL)
+            await page.goto(KUAISHOU_UPLOAD_URL, wait_until="domcontentloaded", timeout=60000)
             kuaishou_logger.info(_msg("🧭", "小人正在赶往快手图文发布页"))
             await page.wait_for_url(KUAISHOU_UPLOAD_URL_PATTERN)
 
