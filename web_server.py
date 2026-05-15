@@ -97,22 +97,24 @@ def handle_login(platform: str, account: str, headless: bool = True) -> dict:
     if cookie_file.exists():
         return {"ok": True, "status": "logged_in"}
 
-    # Check if already running
+    # Kill old login process and delete old QRs for this platform
     key = f"{platform}_{account}"
     if key in _login_processes:
-        proc = _login_processes[key]
-        if proc.poll() is None:
-            # Still running — check for QR code
-            qr = _find_qr(platform, account)
-            if qr:
-                return {"ok": True, "status": "qr_ready", "qr_url": qr}
-            if cookie_file.exists():
-                return {"ok": True, "status": "logged_in"}
-            return {"ok": True, "status": "waiting", "message": "登录进行中，请等待二维码..."}
-        else:
-            del _login_processes[key]
+        old_proc = _login_processes[key]
+        if old_proc.poll() is None:
+            old_proc.kill()
+        del _login_processes[key]
 
-    # Start login in background
+    # Delete ALL old QR PNGs for this platform (prevent expired QR reuse)
+    for old_qr in COOKIE_DIR.glob(f"{platform}_*qrcode*.png"):
+        old_qr.unlink(missing_ok=True)
+    for old_qr in (COOKIE_DIR / _sau_dir(platform)).glob("*.png") if (COOKIE_DIR / _sau_dir(platform)).exists() else []:
+        old_qr.unlink(missing_ok=True)
+    # Also clean uploads
+    for old_up in UPLOAD_DIR.glob(f"qr_{platform}_*.png"):
+        old_up.unlink(missing_ok=True)
+
+    # Start fresh login in background
     args = ["sau", platform, "login", "--account", account]
     if headless:
         args.append("--headless")
