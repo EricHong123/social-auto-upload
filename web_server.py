@@ -193,7 +193,7 @@ def handle_publish(platform: str, account: str, video_file: str,
         "--title", title,
         "--desc", desc,
         "--tags", tags,
-        "--headless",
+        "--headed",
     ]
     if schedule:
         args.extend(["--schedule", schedule])
